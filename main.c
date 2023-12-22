@@ -85,21 +85,23 @@
         return str +3;
     }
     
+    // ------------------------------------------------------------------------------------------------------------ //
+
     void PaUtil_InitializeClock( void );
     double PaUtil_GetTime( void );
     double T0;
     
     #define SAMPLERATE 48000 // [samples/second]
     #define SAMPLESIZE sizeof(float)
-    
+
     #define NOW ((long)(ceil((PaUtil_GetTime()-T0)*SAMPLERATE))) // [samples]   
      
     #define STATSCOUNT 100
 
 
     struct stat {                                                  // STAT
-        long x;  // timestamp [samples]
-        long y1; // available before insert/get [samples]
+        long x;     // timestamp [samples]
+        long y1;    // available before insert/get [samples]
         long y2; }; // available after insert/get [samples]
 
     struct port {
@@ -126,16 +128,32 @@
         const PaStreamCallbackTimeInfo *timeInfo,
         PaStreamCallbackFlags statusFlags,
         void *userdata ){
+        
+        long now;
 
         if( statusFlags )
             PRINT( "status: %s \n", status_string( statusFlags ) );
 
         if( input ){ // PRINT("i");
-         
+        
+            // write
+        
+            // stamp
+            now = NOW;
+            
             if( INPORT.t0 == 0 )
-                INPORT.t0 = NOW;
+                INPORT.t0 = now;
                 
-            INPORT.len += frameCount; // commit
+            // commit
+            INPORT.len += frameCount;
+            
+            // log
+            INPORT.stats[INPORT.stats_i].x = now;
+            INPORT.stats[INPORT.stats_i].y1 = INPORT.t0 + INPORT.len - now;
+            INPORT.stats[INPORT.stats_i].y2 = INPORT.stats[stats_i].y1 + frameCount;
+            INPORT.stats_i ++;
+            if( INPORT.stats_i == STATSCOUNT )
+                INPORT.stats_i = 0;
         }
         
         if( output ){ // PRINT("o");
@@ -199,6 +217,7 @@
     const int width = 600;
     const int height = 700;
     const int WW = 574, HH = 200;
+    const int vw = 1000;
 
     HWND hwnd, hCombo1, hCombo2, hBtn;
     
@@ -238,11 +257,16 @@
         return DefWindowProc( hwnd, msg, wParam, lParam ); }
 
     void draw(){
-        memset( pixels, 128, WW*HH*4 );
-        
-        GetClientRect( hwnd, &rc );
-        
+        memset( pixels, 128, WW*HH*4 );        
+        GetClientRect( hwnd, &rc );        
         DrawText( hdcMem, (const char*) &console, -1, &rc, DT_LEFT );
+        
+        //static POINT points[STATSCOUNT];
+        //if()
+        //long now = NOW;
+        //for( int i=0; i<INPORT.stats_i; i++ ){
+        //    points[i].x = INPORT.stats[i].x - now
+        //}
         
         BitBlt( hdc, 10, 70, WW, HH, hdcMem, 0, 0, SRCCOPY );
     }
