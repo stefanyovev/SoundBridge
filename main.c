@@ -12,77 +12,15 @@
     #define OK 0
     #define FAIL 1    
     
-    //char console[1000] = "";
-    //void PRINT( char *format, ... ){
-
-    //    char str[1000] = "";
-        
-    //    va_list(args);
-    //    va_start(args, format);
-    //    vsprintf(str, format, args);
-    //    va_end(args);
-        
-    //    if( strlen( str ) == 0 )
-    //        return;
-
-    //    int width = 20, height=10;
-    //    int lines = 0, line_chars = 0;
-        
-    //    char str2[1000] = "";
-    //    str2[999] = 0;
-    //    int str2i = 998;
-        
-    //    for( int i=strlen( str ) -1; i>-1; i-- ){
-    //        str2[str2i] = str[i];
-    //        str2i --;
-
-    //        if( str[i] == '\n' ){
-    //            lines ++;
-    //            line_chars = 0;
-    //        } else
-    //            line_chars ++;
-                
-    //        if( line_chars == width ){                
-    //            str2[str2i] = '\n';
-    //            str2i --;
-    //            lines ++;
-    //            line_chars = 0;
-    //        }
-            
-    //        if( lines == height ){
-    //            strcpy( console, str2+str2i+1 );
-    //            return;
-    //        }
-
-            //str2 ended ?
-    //    }
-    //    str2i++;
-                
-    //    strcat( console, str2 + str2i );
-
-    //    lines = 0;
-    //    for( int i=strlen( console ) -1; i>-1; i-- )
-    //        if( console[i] == '\n' ){
-    //            lines ++;
-    //            if( lines == height ){
-    //                strcpy( console, console+i );
-    //                return;
-    //            }
-    //        }
-
-        
-    //}
-    
-    
     char console[1000] = "";
     void PRINT( char *format, ... ){
 
-        static int width = 20;
-        static int height = 5;
+        static int width = 80;
+        static int height = 12;
         static int lines = 1;
         static int first_line_len = 0;
         static int last_line_len = 0;
-        static int curosr = 0;
+        static int cursor = 0;
 
         char str[1000] = "";
         
@@ -95,24 +33,13 @@
             return;
 
         for( int i=0; ; ){
-            
-            if( last_line_len == width ){
-                if( lines == height ){
-                    // drop first line
-                    
-                } else {
-                    // insert \n
-                    console[cursor] = '\n';
-                    cursor ++;
-                    lines ++;
-                    if( lines == 2 )
-                        first_line_len = last_line_len;
-                    last_line_len = 0;
-                }
-            }
-            
+
             // copy
             console[cursor] = str[i];
+
+            // advance
+            cursor ++; i ++;
+            last_line_len ++;
             
             if( str[i] == '\n' ){
                 lines ++;
@@ -121,10 +48,24 @@
                 last_line_len = 0;                
             }
             
-            // advance
-            cursor ++; i ++;
-            last_line_len ++;
-            
+            if( lines > height ){
+                // drop first line
+                strcpy( console, console+first_line_len+1 );
+                lines--;
+                cursor -= first_line_len+1;
+                for( first_line_len = 0; console[first_line_len] != '\n'; first_line_len ++ );
+             }
+
+            if( last_line_len == width ){
+                // insert \n
+                console[cursor] = '\n';
+                cursor ++;
+                lines ++;
+                if( lines == 2 )
+                    first_line_len = last_line_len;
+                last_line_len = 0;
+            }
+                        
             // stop ?
             if( i == strlen( str ) )
                 break;
@@ -179,7 +120,7 @@
         void *userdata ){
 
         if( statusFlags )
-            PRINT( "statusFlags: %d", statusFlags );
+            PRINT( "statusFlags: %d \n", statusFlags );
 
         if( input ){ PRINT("i");
          
@@ -303,8 +244,6 @@
     int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine, int nCmdShow ){                                    // MAIN2
 
         // SetProcessDPIAware();
-
-        PRINT( "\n\t%s\n\n", title );
 
         if( Pa_Initialize() ){
             PRINT( "ERROR: Pa_Initialize rubbish \n" );
