@@ -75,7 +75,15 @@
 
     }
 
-    
+    char * status_string( PaStreamCallbackFlags flags ){
+        static char str[99]; str[0] = 0;
+        if( flags & paInputUnderflow ) strcat( str, " & Input Underflow" );
+        if( flags & paInputOverflow ) strcat( str, " & Input Overflow" );
+        if( flags & paOutputUnderflow ) strcat( str, " & Output Underflow" );
+        if( flags & paOutputOverflow ) strcat( str, " & Output Overflow" );
+        if( flags & paPrimingOutput ) strcat( str, " & Priming Output" );
+        return str +3;
+    }
     
     void PaUtil_InitializeClock( void );
     double PaUtil_GetTime( void );
@@ -120,9 +128,9 @@
         void *userdata ){
 
         if( statusFlags )
-            PRINT( "statusFlags: %d \n", statusFlags );
+            PRINT( "status: %s \n", status_string( statusFlags ) );
 
-        if( input ){ PRINT("i");
+        if( input ){ // PRINT("i");
          
             if( INPORT.t0 == 0 )
                 INPORT.t0 = NOW;
@@ -130,7 +138,7 @@
             INPORT.len += frameCount; // commit
         }
         
-        if( output ){ PRINT("o");
+        if( output ){ // PRINT("o");
         
             if( OUTPORT.t0 == 0 )
                 OUTPORT.t0 = NOW;
@@ -143,7 +151,7 @@
 
     int start( int input_device_id, int output_device_id ){                            // +DEVICE        
         for( int i=1; i>-1; i-- ){
-            PRINT( "starting %s ... \n", ( i ? "input" : "output" ) );
+            PRINT( "starting %s %d ... \n", ( i ? "input" : "output" ), ( i ? input_device_id : output_device_id ) );
         
             int device_id = ( i ? input_device_id : output_device_id );
             const PaDeviceInfo *device_info = Pa_GetDeviceInfo( device_id );
@@ -156,7 +164,6 @@
             params.suggestedLatency = ( i ? device_info->defaultLowInputLatency : device_info->defaultLowOutputLatency ); // "buffer size" [seconds]
             params.channelCount = ( i ? device_info->maxInputChannels : device_info->maxOutputChannels );
             
-            PRINT( "opening stream ... \n" );
             PaError err = Pa_OpenStream(
                 stream,
                 i ? &params : 0,
@@ -166,6 +173,7 @@
                 paClipOff | paDitherOff | paPrimeOutputBuffersUsingStreamCallback, // paNeverDropInput ?
                 &device_tick,
                 0 );
+
             if( err != paNoError ){
                 if( err != paUnanticipatedHostError ) {
                     PRINT( "ERROR 1: %s \n ", Pa_GetErrorText( err ) );
@@ -175,13 +183,12 @@
                     PRINT( "ERROR 2: %s \n ", herr->errorText );
                     return FAIL; }}
                     
-            PRINT( "starting stream ... \n" );                    
             err = Pa_StartStream( *stream );
             if( err != paNoError ){
                 PRINT( "ERROR 3: %s \n ", Pa_GetErrorText( err ) );
                 return FAIL; }}
 
-        PRINT( "ok \n " );
+        PRINT( "ok. should be playing. \n " );
         return OK; }
 
 
@@ -222,8 +229,7 @@
                 GetDlgItemText( hwnd, CMB2, txt, 255 );
                 sscanf( txt, "  %3d", &dd );
 
-                if( start( sd, dd ) == FAIL )
-                    MessageBox( hwnd, "FAIL", "", MB_OK ); }}
+                start( sd, dd ); }}
 
         else if( msg == WM_CLOSE )
             DestroyWindow( hwnd );
