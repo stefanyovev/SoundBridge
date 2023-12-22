@@ -11,7 +11,130 @@
 
     #define OK 0
     #define FAIL 1    
-    #define PRINT printf
+    
+    //char console[1000] = "";
+    //void PRINT( char *format, ... ){
+
+    //    char str[1000] = "";
+        
+    //    va_list(args);
+    //    va_start(args, format);
+    //    vsprintf(str, format, args);
+    //    va_end(args);
+        
+    //    if( strlen( str ) == 0 )
+    //        return;
+
+    //    int width = 20, height=10;
+    //    int lines = 0, line_chars = 0;
+        
+    //    char str2[1000] = "";
+    //    str2[999] = 0;
+    //    int str2i = 998;
+        
+    //    for( int i=strlen( str ) -1; i>-1; i-- ){
+    //        str2[str2i] = str[i];
+    //        str2i --;
+
+    //        if( str[i] == '\n' ){
+    //            lines ++;
+    //            line_chars = 0;
+    //        } else
+    //            line_chars ++;
+                
+    //        if( line_chars == width ){                
+    //            str2[str2i] = '\n';
+    //            str2i --;
+    //            lines ++;
+    //            line_chars = 0;
+    //        }
+            
+    //        if( lines == height ){
+    //            strcpy( console, str2+str2i+1 );
+    //            return;
+    //        }
+
+            //str2 ended ?
+    //    }
+    //    str2i++;
+                
+    //    strcat( console, str2 + str2i );
+
+    //    lines = 0;
+    //    for( int i=strlen( console ) -1; i>-1; i-- )
+    //        if( console[i] == '\n' ){
+    //            lines ++;
+    //            if( lines == height ){
+    //                strcpy( console, console+i );
+    //                return;
+    //            }
+    //        }
+
+        
+    //}
+    
+    
+    char console[1000] = "";
+    void PRINT( char *format, ... ){
+
+        static int width = 20;
+        static int height = 5;
+        static int lines = 1;
+        static int first_line_len = 0;
+        static int last_line_len = 0;
+        static int curosr = 0;
+
+        char str[1000] = "";
+        
+        va_list(args);
+        va_start(args, format);
+        vsprintf(str, format, args);
+        va_end(args);
+        
+        if( strlen( str ) == 0 )
+            return;
+
+        for( int i=0; ; ){
+            
+            if( last_line_len == width ){
+                if( lines == height ){
+                    // drop first line
+                    
+                } else {
+                    // insert \n
+                    console[cursor] = '\n';
+                    cursor ++;
+                    lines ++;
+                    if( lines == 2 )
+                        first_line_len = last_line_len;
+                    last_line_len = 0;
+                }
+            }
+            
+            // copy
+            console[cursor] = str[i];
+            
+            if( str[i] == '\n' ){
+                lines ++;
+                if( lines == 2 )
+                    first_line_len = last_line_len;
+                last_line_len = 0;                
+            }
+            
+            // advance
+            cursor ++; i ++;
+            last_line_len ++;
+            
+            // stop ?
+            if( i == strlen( str ) )
+                break;
+        }
+        
+        console[cursor] = 0;
+
+    }
+
+    
     
     void PaUtil_InitializeClock( void );
     double PaUtil_GetTime( void );
@@ -26,7 +149,9 @@
 
 
     struct stat {                                                  // STAT
-        long t, avail, frameCount; };
+        long x;  // timestamp [samples]
+        long y1; // available before insert/get [samples]
+        long y2; }; // available after insert/get [samples]
 
     struct port {
         PaDeviceInfo *device_info;
@@ -119,53 +244,20 @@
         return OK; }
 
 
-    int main2( HANDLE handle );                                    // MAIN
-    
-    int main( int agrc, char* argv ){
-        // SetProcessDPIAware();
-
-        PRINT( "\n\t%s\n\n", title );
-
-        if( Pa_Initialize() ){
-            PRINT( "ERROR: Pa_Initialize rubbish \n" );
-            return FAIL; }
-            
-        if( Pa_GetDeviceCount() <= 0 ) {
-            PRINT( "ERROR: No Devices Found \n" );
-            return FAIL; }
-            
-        PaUtil_InitializeClock();
-        T0 = PaUtil_GetTime();
-        
-        const PaVersionInfo *vi = Pa_GetVersionInfo();
-
-        PRINT( "%s\n\n", vi->versionText );
-
-        CreateThread( 0, 0, &main2, 0, 0, 0 );
-
-        char cmd[1000] = "";
-
-        while( 1 ){
-
-            fflush( stdout );
-            PRINT( "\t] " );
-            gets( cmd );
-
-            if( strcmp( cmd, "q" ) == 0 )
-                return OK; }}
-
 
     // ------------------------------------------------------------------------------------------------------------ //
 
 
     const int width = 600;
     const int height = 700;
-    const int vw = 10000; // viewport width samples
+    const int WW = 574, HH = 200;
 
     HWND hwnd, hCombo1, hCombo2, hBtn;
+    
     HDC hdc, hdcMem;
     HBITMAP hbmp;
     void ** pixels;
+    
     RECT rc;
     MSG msg;
     BOOL done = FALSE;
@@ -198,9 +290,36 @@
             PostQuitMessage( 0 );
         return DefWindowProc( hwnd, msg, wParam, lParam ); }
 
+    void draw(){
+        memset( pixels, 128, WW*HH*4 );
+        
+        GetClientRect( hwnd, &rc );
+        
+        DrawText( hdcMem, (const char*) &console, -1, &rc, DT_LEFT );
+        
+        BitBlt( hdc, 10, 70, WW, HH, hdcMem, 0, 0, SRCCOPY );
+    }
 
-    int main2( HANDLE handle ){                                    // MAIN2
-        HINSTANCE hInstance = GetModuleHandle(0);
+    int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine, int nCmdShow ){                                    // MAIN2
+
+        // SetProcessDPIAware();
+
+        PRINT( "\n\t%s\n\n", title );
+
+        if( Pa_Initialize() ){
+            PRINT( "ERROR: Pa_Initialize rubbish \n" );
+            return FAIL; }
+            
+        if( Pa_GetDeviceCount() <= 0 ) {
+            PRINT( "ERROR: No Devices Found \n" );
+            return FAIL; }
+            
+        PaUtil_InitializeClock();
+        T0 = PaUtil_GetTime();
+        
+        const PaVersionInfo *vi = Pa_GetVersionInfo();
+
+        PRINT( "%s\n\n", vi->versionText );
 
         WNDCLASSEX wc;
         memset( &wc, 0, sizeof(wc) );
@@ -209,6 +328,7 @@
         wc.lpfnWndProc = WndProc;
         wc.lpszClassName = "mainwindow";
         wc.hbrBackground = COLOR_WINDOW; //CreateSolidBrush( RGB(64, 64, 64) );
+        wc.hCursor = LoadCursor( 0, IDC_ARROW );
 
         if( !RegisterClassEx(&wc) ){
             MessageBox( 0, "Failed to register window class.", "Error", MB_OK );
@@ -222,8 +342,8 @@
         BITMAPINFO bmi;
         memset( &bmi, 0, sizeof(bmi) );
         bmi.bmiHeader.biSize = sizeof(bmi);
-        bmi.bmiHeader.biWidth = width;
-        bmi.bmiHeader.biHeight =  -(height-70);         // Order pixels from top to bottom
+        bmi.bmiHeader.biWidth = WW;
+        bmi.bmiHeader.biHeight =  -HH;         // Order pixels from top to bottom
         bmi.bmiHeader.biPlanes = 1;
         bmi.bmiHeader.biBitCount = 32;             // last byte not used, 32 bit for alignment
         bmi.bmiHeader.biCompression = BI_RGB;
@@ -232,6 +352,7 @@
         hbmp = CreateDIBSection( hdc, &bmi, DIB_RGB_COLORS, &pixels, 0, 0 );
         hdcMem = CreateCompatibleDC( hdc );
         SelectObject( hdcMem, hbmp );
+        SetBkMode( hdcMem, TRANSPARENT );
 
         ShowWindow( hwnd, SW_SHOW );
 
@@ -253,8 +374,7 @@
                 else {
                     TranslateMessage( &msg );
                     DispatchMessage( &msg ); }}
-            else {
-                // drawing
-            }
+            else 
+                draw();
         }
         return 0; }
