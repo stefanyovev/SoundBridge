@@ -7,74 +7,56 @@
     #include <string.h>
     #include <math.h>
     #include <windows.h>
-    #include <wingdi.h>
     #include <portaudio.h>
 
     #define OK 0
     #define FAIL 1    
     
     char console[1000] = "";
+    
     void PRINT( char *format, ... ){
 
-        static int width = 80;
-        static int height = 12;
-        static int lines = 1;
-        static int first_line_len = 0;
-        static int last_line_len = 0;
+        static int width = 80, height = 12;
+        static int lines = 1, firstline_len = 0, lastline_len = 0;
         static int cursor = 0;
 
         char str[1000] = "";
         
-        va_list(args);
-        va_start(args, format);
-        vsprintf(str, format, args);
-        va_end(args);
+        va_list( args );
+        va_start( args, format );
+        vsprintf( str, format, args );
+        va_end( args );
         
         if( strlen( str ) == 0 )
             return;
 
         for( int i=0; ; ){
-
-            // copy
-            console[cursor] = str[i];
-
-            // advance
-            cursor ++; i ++;
-            last_line_len ++;
+            console[cursor++] = str[i++];
+            lastline_len ++;
             
             if( str[i] == '\n' ){
                 lines ++;
                 if( lines == 2 )
-                    first_line_len = last_line_len;
-                last_line_len = 0;                
-            }
+                    firstline_len = lastline_len;
+                lastline_len = 0; }
             
             if( lines > height ){
-                // drop first line
-                strcpy( console, console+first_line_len+1 );
+                strcpy( console, console+firstline_len+1 );
                 lines--;
-                cursor -= first_line_len+1;
-                for( first_line_len = 0; console[first_line_len] != '\n'; first_line_len ++ );
-             }
+                cursor -= firstline_len+1;
+                for( firstline_len = 0; console[firstline_len] != '\n'; firstline_len ++ ); }
 
-            if( last_line_len == width ){
-                // insert \n
-                console[cursor] = '\n';
-                cursor ++;
+            if( lastline_len == width ){
+                console[cursor++] = '\n';
                 lines ++;
                 if( lines == 2 )
-                    first_line_len = last_line_len;
-                last_line_len = 0;
-            }
-                        
-            // stop ?
-            if( i == strlen( str ) )
-                break;
-        }
-        
-        console[cursor] = 0;
+                    firstline_len = lastline_len;
+                lastline_len = 0; }
 
-    }
+            if( i == strlen( str ) )
+                break; }
+        
+        console[cursor] = 0; }
 
     char * status_string( PaStreamCallbackFlags flags ){
         static char str[99]; str[0] = 0;
@@ -83,8 +65,7 @@
         if( flags & paOutputUnderflow ) strcat( str, " & Output Underflow" );
         if( flags & paOutputOverflow ) strcat( str, " & Output Overflow" );
         if( flags & paPrimingOutput ) strcat( str, " & Priming Output" );
-        return str +3;
-    }
+        return str +3; }
     
     // ############################################################################################################ //
 
@@ -111,7 +92,8 @@
         int channels_count;
         long t0, len;
         struct stat stats[STATSCOUNT];
-        int stats_i; }
+        int stats_i;
+        int stats_all; }
 
     INPORT, OUTPORT;
     
@@ -153,8 +135,10 @@
             INPORT.stats[INPORT.stats_i].y1 = INPORT.t0 + INPORT.len - now;
             INPORT.stats[INPORT.stats_i].y2 = INPORT.stats[INPORT.stats_i].y1 + frameCount;
             INPORT.stats_i ++;
-            if( INPORT.stats_i == STATSCOUNT )
+            if( INPORT.stats_i == STATSCOUNT ){
+                INPORT.stats_all = 1;
                 INPORT.stats_i = 0;
+            }
         }
         
         if( output ){ // PRINT("o");
@@ -168,7 +152,7 @@
         return paContinue; }
 
 
-    int start( int input_device_id, int output_device_id ){                            // +DEVICE        
+    int start( int input_device_id, int output_device_id ){
         for( int i=1; i>-1; i-- ){
             PRINT( "starting %s %d ... \n", ( i ? "input" : "output" ), ( i ? input_device_id : output_device_id ) );
         
@@ -218,7 +202,6 @@
     const int width = 600;
     const int height = 700;
     const int WW = 574, HH = 200;
-    const int vw = 150;
 
     HWND hwnd, hCombo1, hCombo2, hBtn;
     
@@ -263,6 +246,17 @@
             PostQuitMessage( 0 );
         return DefWindowProc( hwnd, msg, wParam, lParam ); }
 
+
+    int VPw = SAMPLERATE; // ViewPort width = 1 second in samples
+    int VPh = 3000;       // ViewPort height = 2000 samples
+    int VPx = 0;         // ViewPort pos x = now - width (rightmost points)
+    int VPy = 0;     // ViewPort pos y = -VPh/2 so the absis comes vertically centered
+    
+    int Vw = 200;         // View width
+    int Vh = 100;         // View height
+    int Vx = 350;        // View pos x
+    int Vy = 10;        // View pos y
+    
     void draw(){
         memset( pixels, 128, WW*HH*4 );        
         GetClientRect( hwnd, &rc );        
@@ -271,27 +265,55 @@
         MoveToEx( hdcMem, 0, 0, 0 );
         LineTo( hdcMem, 100,100 );
         
+        Rectangle( hdcMem, Vx, Vy, Vx+Vw, Vy+Vh );
+        
         static POINT points[STATSCOUNT*2];
-
-        if( INPORT.stats_i ){
+        
+        if( INPORT.stats_all ){
+            PRINT( "." );
+        
             long now = NOW;
-            long tmax = INPORT.stats[INPORT.stats_i].x / vw;
-            
             int pi = 0;
+            
+            // copy/generate            
             for( int i=INPORT.stats_i; i>-1; i-- ){
-                points[pi].x = width - (INPORT.stats[i].x/vw - tmax);
-                points[pi].y = height - INPORT.stats[i].y1/2;
+                points[pi].x = INPORT.stats[i].x;
+                points[pi].y = INPORT.stats[i].y1;
                 pi++;
-                points[pi].x = width - (INPORT.stats[i].x/vw - tmax);
-                points[pi].y = height - INPORT.stats[i].y2/2;
+                points[pi].x = INPORT.stats[i].x;
+                points[pi].y = INPORT.stats[i].y2;
                 pi++;
-                
-                PRINT( "(%d,%d)(%d,%d)", points[pi-2].x, points[pi-2].y, points[pi-1].x, points[pi-1].x );
+            }
+            for( int i=STATSCOUNT-1; i>INPORT.stats_i; i-- ){
+                points[pi].x = INPORT.stats[i].x;
+                points[pi].y = INPORT.stats[i].y1;
+                pi++;
+                points[pi].x = INPORT.stats[i].x;
+                points[pi].y = INPORT.stats[i].y2;
+                pi++;
             }
             
-            Polyline( hdcMem, points, INPORT.stats_i );
+            // transform
+            double Qw = ((double)Vw)/((double)VPw);
+            double Qh = ((double)Vh)/((double)VPh);
+            
+            VPx = now - VPw;
+            for( pi=0; pi<STATSCOUNT*2; pi++ ){
+                points[pi].x = (long)round( (points[pi].x - VPx) * Qw + Vx );
+                points[pi].y = (long)round( (points[pi].y - VPy) * Qh + Vy );
+                PRINT( "(%d,%d)", points[pi].x, points[pi].y );
+            }
+
+            // we are in top-left origin and want bottom-left in the view (rectangle)
+            for( pi=0; pi<STATSCOUNT*2; pi++ ){
+                points[pi].y = Vh - points[pi].y;
+            }
+
+            
+            Polyline( hdcMem, points, STATSCOUNT*2 );
         }
         
+        // PRINT( "(%d,%d)(%d,%d)", points[pi-2].x, points[pi-2].y, points[pi-1].x, points[pi-1].x );
         BitBlt( hdc, 10, 70, WW, HH, hdcMem, 0, 0, SRCCOPY );
     }
 
@@ -313,6 +335,9 @@
         const PaVersionInfo *vi = Pa_GetVersionInfo();
 
         PRINT( "%s\n\n", vi->versionText );
+
+        memset( &INPORT, 0, sizeof(INPORT) );
+        memset( &OUTPORT, 0, sizeof(OUTPORT) );
 
         WNDCLASSEX wc;
         memset( &wc, 0, sizeof(wc) );
@@ -370,4 +395,5 @@
             else 
                 draw();
         }
+        
         return 0; }
