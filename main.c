@@ -7,6 +7,7 @@
     #include <string.h>
     #include <math.h>
     #include <windows.h>
+    #include <wingdi.h>
     #include <portaudio.h>
 
     #define OK 0
@@ -85,7 +86,7 @@
         return str +3;
     }
     
-    // ------------------------------------------------------------------------------------------------------------ //
+    // ############################################################################################################ //
 
     void PaUtil_InitializeClock( void );
     double PaUtil_GetTime( void );
@@ -134,7 +135,7 @@
         if( statusFlags )
             PRINT( "status: %s \n", status_string( statusFlags ) );
 
-        if( input ){ // PRINT("i");
+        if( input ){ // PRINT(" %d", frameCount);
         
             // write
         
@@ -150,7 +151,7 @@
             // log
             INPORT.stats[INPORT.stats_i].x = now;
             INPORT.stats[INPORT.stats_i].y1 = INPORT.t0 + INPORT.len - now;
-            INPORT.stats[INPORT.stats_i].y2 = INPORT.stats[stats_i].y1 + frameCount;
+            INPORT.stats[INPORT.stats_i].y2 = INPORT.stats[INPORT.stats_i].y1 + frameCount;
             INPORT.stats_i ++;
             if( INPORT.stats_i == STATSCOUNT )
                 INPORT.stats_i = 0;
@@ -217,7 +218,7 @@
     const int width = 600;
     const int height = 700;
     const int WW = 574, HH = 200;
-    const int vw = 1000;
+    const int vw = 150;
 
     HWND hwnd, hCombo1, hCombo2, hBtn;
     
@@ -248,7 +249,13 @@
                 GetDlgItemText( hwnd, CMB2, txt, 255 );
                 sscanf( txt, "  %3d", &dd );
 
-                start( sd, dd ); }}
+                int ok = start( sd, dd );
+                
+                EnableWindow( hCombo1, ok );
+                EnableWindow( hCombo2, ok );
+                EnableWindow( hBtn, ok );
+                
+                 }}
 
         else if( msg == WM_CLOSE )
             DestroyWindow( hwnd );
@@ -261,12 +268,29 @@
         GetClientRect( hwnd, &rc );        
         DrawText( hdcMem, (const char*) &console, -1, &rc, DT_LEFT );
         
-        //static POINT points[STATSCOUNT];
-        //if()
-        //long now = NOW;
-        //for( int i=0; i<INPORT.stats_i; i++ ){
-        //    points[i].x = INPORT.stats[i].x - now
-        //}
+        MoveToEx( hdcMem, 0, 0, 0 );
+        LineTo( hdcMem, 100,100 );
+        
+        static POINT points[STATSCOUNT*2];
+
+        if( INPORT.stats_i ){
+            long now = NOW;
+            long tmax = INPORT.stats[INPORT.stats_i].x / vw;
+            
+            int pi = 0;
+            for( int i=INPORT.stats_i; i>-1; i-- ){
+                points[pi].x = width - (INPORT.stats[i].x/vw - tmax);
+                points[pi].y = height - INPORT.stats[i].y1/2;
+                pi++;
+                points[pi].x = width - (INPORT.stats[i].x/vw - tmax);
+                points[pi].y = height - INPORT.stats[i].y2/2;
+                pi++;
+                
+                PRINT( "(%d,%d)(%d,%d)", points[pi-2].x, points[pi-2].y, points[pi-1].x, points[pi-1].x );
+            }
+            
+            Polyline( hdcMem, points, INPORT.stats_i );
+        }
         
         BitBlt( hdc, 10, 70, WW, HH, hdcMem, 0, 0, SRCCOPY );
     }
