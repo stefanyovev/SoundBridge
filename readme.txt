@@ -1,2 +1,2 @@
 
-   Realtime sound record and play.
+   Realtime sound transfer.
