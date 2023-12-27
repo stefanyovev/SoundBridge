@@ -136,8 +136,8 @@
             INPORT.stats[INPORT.stats_i].y2 = INPORT.stats[INPORT.stats_i].y1 + frameCount;
             INPORT.stats_i ++;
             if( INPORT.stats_i == STATSCOUNT ){
-                INPORT.stats_all = 1;
                 INPORT.stats_i = 0;
+                INPORT.stats_all = 1;
             }
         }
         
@@ -189,7 +189,13 @@
             err = Pa_StartStream( *stream );
             if( err != paNoError ){
                 PRINT( "ERROR 3: %s \n ", Pa_GetErrorText( err ) );
-                return FAIL; }}
+                return FAIL; }
+                
+            PaStreamInfo *stream_info = Pa_GetStreamInfo( *stream );            
+            PRINT( "SampleRate %d \n", (int)round(stream_info->sampleRate) );
+            PRINT( "FrameCount %d \n", (int)round( i ? (stream_info->inputLatency)*SAMPLERATE : (stream_info->outputLatency)*SAMPLERATE ));
+            
+        }
 
         PRINT( "ok. should be playing. \n " );
         return OK; }
@@ -262,21 +268,21 @@
         GetClientRect( hwnd, &rc );        
         DrawText( hdcMem, (const char*) &console, -1, &rc, DT_LEFT );
         
-        MoveToEx( hdcMem, 0, 0, 0 );
-        LineTo( hdcMem, 100,100 );
+        //MoveToEx( hdcMem, 0, 0, 0 );
+        //LineTo( hdcMem, 100,100 );
         
         Rectangle( hdcMem, Vx, Vy, Vx+Vw, Vy+Vh );
         
         static POINT points[STATSCOUNT*2];
         
         if( INPORT.stats_all ){
-            PRINT( "." );
+            // PRINT( "." );
         
             long now = NOW;
             int pi = 0;
             
             // copy/generate            
-            for( int i=INPORT.stats_i; i>-1; i-- ){
+            for( int i=INPORT.stats_i-1; i>-1; i-- ){
                 points[pi].x = INPORT.stats[i].x;
                 points[pi].y = INPORT.stats[i].y1;
                 pi++;
@@ -284,7 +290,7 @@
                 points[pi].y = INPORT.stats[i].y2;
                 pi++;
             }
-            for( int i=STATSCOUNT-1; i>INPORT.stats_i; i-- ){
+            for( int i=STATSCOUNT-1; i>INPORT.stats_i-1; i-- ){
                 points[pi].x = INPORT.stats[i].x;
                 points[pi].y = INPORT.stats[i].y1;
                 pi++;
@@ -301,7 +307,7 @@
             for( pi=0; pi<STATSCOUNT*2; pi++ ){
                 points[pi].x = (long)round( (points[pi].x - VPx) * Qw + Vx );
                 points[pi].y = (long)round( (points[pi].y - VPy) * Qh + Vy );
-                PRINT( "(%d,%d)", points[pi].x, points[pi].y );
+                // PRINT( "(%d,%d)", points[pi].x, points[pi].y );
             }
 
             // we are in top-left origin and want bottom-left in the view (rectangle)
