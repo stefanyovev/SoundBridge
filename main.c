@@ -256,32 +256,52 @@
     int VPw = SAMPLERATE; // ViewPort width = 1 second in samples
     int VPh = 3000;       // ViewPort height = 2000 samples
     int VPx = 0;         // ViewPort pos x = now - width (rightmost points)
-    int VPy = 0;     // ViewPort pos y = -VPh/2 so the absis comes vertically centered
+    int VPy = -500;     // ViewPort pos y = -VPh/2 so the absis comes vertically centered
     
-    int Vw = 200;         // View width
+    int Vw = 400;         // View width
     int Vh = 100;         // View height
-    int Vx = 350;        // View pos x
+    int Vx = 150;        // View pos x
     int Vy = 10;        // View pos y
+
+    void draw_stats_view( HDC ddc, stat *stats, int si, int sc ){
+    }
     
     void draw(){
         memset( pixels, 128, WW*HH*4 );        
         GetClientRect( hwnd, &rc );        
         DrawText( hdcMem, (const char*) &console, -1, &rc, DT_LEFT );
-        
-        //MoveToEx( hdcMem, 0, 0, 0 );
-        //LineTo( hdcMem, 100,100 );
-        
+
         Rectangle( hdcMem, Vx, Vy, Vx+Vw, Vy+Vh );
         
-        static POINT points[STATSCOUNT*2];
+        double Qw = ((double)Vw)/((double)VPw);
+        double Qh = ((double)Vh)/((double)VPh);        
         
+        long now = NOW;
+        VPx = now - VPw;
+
+        long absis_x1 = now - SAMPLERATE;
+        long absis_y1 = 0;
+        long absis_x2 = now;
+        long absis_y2 = 0;
+    
+        absis_x1 = (long)round( (absis_x1 - VPx) * Qw + Vx );
+        absis_y1 = (long)round( (absis_y1 - VPy) * Qh + Vy );
+        absis_x2 = (long)round( (absis_x2 - VPx) * Qw + Vx );
+        absis_y2 = (long)round( (absis_y2 - VPy) * Qh + Vy );
+
+        //absis_y1 = 2*Vy + Vh - absis_y1;
+        //absis_y2 = 2*Vy + Vh - absis_y2;
+        
+        MoveToEx( hdcMem, absis_x1, absis_y1, 0 );
+        LineTo( hdcMem, absis_x2, absis_y2 );
+        
+        static POINT points[STATSCOUNT*2];
         if( INPORT.stats_all ){
             // PRINT( "." );
-        
-            long now = NOW;
-            int pi = 0;
+            // Vy = (long)round( 15+sin( ((double)now*10.0)/((double)SAMPLERATE))*30.0 );
             
             // copy/generate            
+            int pi = 0;
             for( int i=INPORT.stats_i-1; i>-1; i-- ){
                 points[pi].x = INPORT.stats[i].x;
                 points[pi].y = INPORT.stats[i].y1;
@@ -300,10 +320,6 @@
             }
             
             // transform
-            double Qw = ((double)Vw)/((double)VPw);
-            double Qh = ((double)Vh)/((double)VPh);
-            
-            VPx = now - VPw;
             for( pi=0; pi<STATSCOUNT*2; pi++ ){
                 points[pi].x = (long)round( (points[pi].x - VPx) * Qw + Vx );
                 points[pi].y = (long)round( (points[pi].y - VPy) * Qh + Vy );
@@ -311,12 +327,13 @@
             }
 
             // we are in top-left origin and want bottom-left in the view (rectangle)
-            for( pi=0; pi<STATSCOUNT*2; pi++ ){
-                points[pi].y = Vh - points[pi].y;
-            }
+            //for( pi=0; pi<STATSCOUNT*2; pi++ ){
+            //    points[pi].y = 2*Vy + Vh - points[pi].y;
+            //}
 
             
             Polyline( hdcMem, points, STATSCOUNT*2 );
+            
         }
         
         // PRINT( "(%d,%d)(%d,%d)", points[pi-2].x, points[pi-2].y, points[pi-1].x, points[pi-1].x );
