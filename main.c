@@ -83,6 +83,7 @@
 
     struct graph {
         POINT points[POINTSMAX];
+        int full;
         long cursor; };
 
     struct port {
@@ -123,14 +124,21 @@
             INPORT.len += frameCount;
             
             // log
+            if( INPORT.graph.full == 0 && INPORT.graph.cursor == 0 )
+                PRINT( "profiling input \n" );
             INPORT.graph.points[INPORT.graph.cursor].x = now;
             INPORT.graph.points[INPORT.graph.cursor].y = INPORT.t0 + INPORT.len -frameCount -now; // avail before insert
             INPORT.graph.cursor++; // should not get > POINTSMAX now
             INPORT.graph.points[INPORT.graph.cursor].x = now;
             INPORT.graph.points[INPORT.graph.cursor].y = INPORT.t0 + INPORT.len -now; // avail now
             INPORT.graph.cursor++;
-            if( INPORT.graph.cursor == POINTSMAX )
+            if( INPORT.graph.cursor == POINTSMAX ){
                 INPORT.graph.cursor = 0;
+                if( INPORT.graph.full == 0 ){
+                    INPORT.graph.full = 1;
+                    PRINT( "profiled input \n" );
+                }
+            }
         }
         
         if( output ){ // PRINT("o");
@@ -171,22 +179,23 @@
 
             if( err != paNoError ){
                 if( err != paUnanticipatedHostError ) {
-                    PRINT( "ERROR 1: %s \n ", Pa_GetErrorText( err ) );
+                    PRINT( "ERROR 1: %s \n", Pa_GetErrorText( err ) );
                     return FAIL; }
                 else {
                     const PaHostErrorInfo* herr = Pa_GetLastHostErrorInfo();
-                    PRINT( "ERROR 2: %s \n ", herr->errorText );
+                    PRINT( "ERROR 2: %s \n", herr->errorText );
                     return FAIL; }}
                     
             err = Pa_StartStream( *stream );
             if( err != paNoError ){
-                PRINT( "ERROR 3: %s \n ", Pa_GetErrorText( err ) );
+                PRINT( "ERROR 3: %s \n", Pa_GetErrorText( err ) );
                 return FAIL; }
             
             struct port *p = ( i ? &INPORT : &OUTPORT );
             p->t0 = 0;
             p->len = 0;
             p->graph.cursor = 0;
+            p->graph.full = 0;
             
             PaStreamInfo *stream_info = Pa_GetStreamInfo( *stream );            
             PRINT( "SampleRate %d \n", (int)round(stream_info->sampleRate) );
@@ -194,7 +203,7 @@
             
         }
 
-        PRINT( "ok. should be playing. \n " );
+        PRINT( "ok. should be playing. \n" );
         return OK; }
 
 
@@ -295,11 +304,14 @@
         LineTo( hdcMem, p2.x, p2.y );
         LineTo( hdcMem, p3.x, p3.y );
         
-        static POINT points[POINTSMAX-1]; // without the current may be half written
+        static POINT points[POINTSMAX-2]; // without the current stat; may be half written
         
-        if( INPORT.graph.cursor > 1 ){
+        if( INPORT.graph.full ){ // has at least 2 points (1 stat)
         
-            int i = INPORT.graph.cursor +1; // leave the current may be half written
+            int i = INPORT.graph.cursor +2; // leave the current stat; may be half written
+            if( i == POINTSMAX ) // current was the last
+                i = 0;
+
             int pi = 0;
             
             for( ;; ){
@@ -311,10 +323,10 @@
                     break;
             }
 
-            for( pi=0; pi<POINTSMAX-1; pi++ )
+            for( pi=0; pi<POINTSMAX-2; pi++ )
                 transform_point( points+pi );
             
-            Polyline( hdcMem, points, POINTSMAX-1 );
+            Polyline( hdcMem, points, POINTSMAX-2 );
             
         }
         
