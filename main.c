@@ -78,30 +78,19 @@
 
     #define NOW ((long)(ceil((PaUtil_GetTime()-T0)*SAMPLERATE))) // [samples]   
      
-    #define STATSCOUNT 100
+    #define POINTSMAX 200  // should be even
 
 
-    struct stat {                                                  // STAT
-        long x;     // timestamp [samples]
-        long y1;    // available before insert/get [samples]
-        long y2; }; // available after insert/get [samples]
+    struct graph {
+        POINT points[POINTSMAX];
+        long cursor; };
 
     struct port {
-        PaDeviceInfo *device_info;
         PaStream *stream;
-        int channels_count;
-        long t0, len;
-        struct stat stats[STATSCOUNT];
-        int stats_i;
-        int stats_all; }
+        long t0, len;        
+        struct graph graph; }
 
     INPORT, OUTPORT;
-    
-    float *canvas;    
-    int *map;
-    long cursor;
-
-    int msize = 100000;                            // channel memory size [samples]
 
 
     PaStreamCallbackResult device_tick(                            // RECEIVE
@@ -116,8 +105,11 @@
 
         if( statusFlags )
             PRINT( "status: %s \n", status_string( statusFlags ) );
+        
+        if( input && output )
+            PRINT( "strange \n" );
 
-        if( input ){ // PRINT(" %d", frameCount);
+        if( input ){
         
             // write
         
@@ -131,14 +123,14 @@
             INPORT.len += frameCount;
             
             // log
-            INPORT.stats[INPORT.stats_i].x = now;
-            INPORT.stats[INPORT.stats_i].y1 = INPORT.t0 + INPORT.len - now;
-            INPORT.stats[INPORT.stats_i].y2 = INPORT.stats[INPORT.stats_i].y1 + frameCount;
-            INPORT.stats_i ++;
-            if( INPORT.stats_i == STATSCOUNT ){
-                INPORT.stats_i = 0;
-                INPORT.stats_all = 1;
-            }
+            INPORT.graph.points[INPORT.graph.cursor].x = now;
+            INPORT.graph.points[INPORT.graph.cursor].y = INPORT.t0 + INPORT.len -frameCount -now; // avail before insert
+            INPORT.graph.cursor++; // should not get > POINTSMAX now
+            INPORT.graph.points[INPORT.graph.cursor].x = now;
+            INPORT.graph.points[INPORT.graph.cursor].y = INPORT.t0 + INPORT.len -now; // avail now
+            INPORT.graph.cursor++;
+            if( INPORT.graph.cursor == POINTSMAX )
+                INPORT.graph.cursor = 0;
         }
         
         if( output ){ // PRINT("o");
@@ -190,7 +182,12 @@
             if( err != paNoError ){
                 PRINT( "ERROR 3: %s \n ", Pa_GetErrorText( err ) );
                 return FAIL; }
-                
+            
+            struct port *p = ( i ? &INPORT : &OUTPORT );
+            p->t0 = 0;
+            p->len = 0;
+            p->graph.cursor = 0;
+            
             PaStreamInfo *stream_info = Pa_GetStreamInfo( *stream );            
             PRINT( "SampleRate %d \n", (int)round(stream_info->sampleRate) );
             PRINT( "FrameCount %d \n", (int)round( i ? (stream_info->inputLatency)*SAMPLERATE : (stream_info->outputLatency)*SAMPLERATE ));
@@ -202,7 +199,7 @@
 
 
 
-    // ------------------------------------------------------------------------------------------------------------ //
+    // ############################################################################################################ //
 
 
     const int width = 600;
@@ -298,28 +295,26 @@
         LineTo( hdcMem, p2.x, p2.y );
         LineTo( hdcMem, p3.x, p3.y );
         
-        static POINT points[STATSCOUNT*2];
-        if( INPORT.stats_all ){
-            int i = INPORT.stats_i, pi = 0;
+        static POINT points[POINTSMAX-1]; // without the current may be half written
+        
+        if( INPORT.graph.cursor > 1 ){
+        
+            int i = INPORT.graph.cursor +1; // leave the current may be half written
+            int pi = 0;
+            
             for( ;; ){
                 
-                points[pi].x = INPORT.stats[i].x;
-                points[pi].y = INPORT.stats[i].y1;
-                pi++;
-
-                points[pi].x = INPORT.stats[i].x;
-                points[pi].y = INPORT.stats[i].y2;
-                pi++;
+                points[pi++] = INPORT.graph.points[i++];
                 
-                i = ++i % STATSCOUNT;
-                if( i == INPORT.stats_i )
+                i = i % POINTSMAX;
+                if( i == INPORT.graph.cursor )
                     break;
             }
 
-            for( pi=0; pi<STATSCOUNT*2; pi++ )
+            for( pi=0; pi<POINTSMAX-1; pi++ )
                 transform_point( points+pi );
             
-            Polyline( hdcMem, points, STATSCOUNT*2 );
+            Polyline( hdcMem, points, POINTSMAX-1 );
             
         }
         
