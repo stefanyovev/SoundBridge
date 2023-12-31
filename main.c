@@ -84,7 +84,8 @@
     struct graph {
         POINT points[POINTSMAX];
         int full;
-        long cursor; };
+        long cursor;
+        long min, max; };
 
     struct port {
         PaStream *stream;
@@ -134,6 +135,24 @@
             INPORT.graph.cursor++;
             if( INPORT.graph.cursor == POINTSMAX ){
                 INPORT.graph.cursor = 0;
+
+                long min = 9999;
+                long max = -9999;
+                for( int i=0; i<POINTSMAX; i++ ){
+                    if( INPORT.graph.points[i].y < min )
+                        min = INPORT.graph.points[i].y;
+                    if( INPORT.graph.points[i].y > max )
+                        max = INPORT.graph.points[i].y;
+                }
+                if( INPORT.graph.min != min ){
+                    INPORT.graph.min = min;
+                    PRINT( "input min_avail = %d \n", min );
+                }
+                if( INPORT.graph.max != max ){
+                    INPORT.graph.max = max;
+                    //PRINT( "input max_avail = %d \n", max );
+                }
+
                 if( INPORT.graph.full == 0 ){
                     INPORT.graph.full = 1;
                     PRINT( "profiled input \n" );
@@ -306,7 +325,7 @@
         
         static POINT points[POINTSMAX-2]; // without the current stat; may be half written
         
-        if( INPORT.graph.full ){ // has at least 2 points (1 stat)
+        if( INPORT.graph.full ){
         
             int i = INPORT.graph.cursor +2; // leave the current stat; may be half written
             if( i == POINTSMAX ) // current was the last
