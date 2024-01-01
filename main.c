@@ -81,6 +81,8 @@
      
     #define POINTSMAX 200  // should be even
     #define POINTSMIN 20
+    
+    #define DIFFSMAX 100
 
 
     struct graph {
@@ -97,7 +99,16 @@
     INPORT, OUTPORT;
 
     long cursor;
-    long last_diff;
+    
+    struct diff {
+        int mag;
+        long count;
+    }
+    
+    diffs[DIFFSMAX];
+    
+    int diffs_i;
+    int diffs_full;
     
 
     void aftermath( int sel, long t, int avail_after, int frameCount ){
@@ -153,16 +164,47 @@
                     cursor = new_cursor_candidate;
                     PRINT( "curosr initialized \n" );
                     
-                } else {
+                } else if( cursor - new_cursor_candidate != 0 ){
+                    // push a diff to think about
                     long diff = cursor - new_cursor_candidate;
-                    if( diff != last_diff ){
-                        PRINT( "{%d}", diff );
-                        last_diff = diff;
+                    if( diff == diffs[diffs_i].mag ){
+                        diffs[diffs_i].count ++;
+                    } else {
+                        diffs_i ++;
+                        if( diffs_i == DIFFSMAX ){
+                            diffs_i = 0;
+                            diffs_full = 1;
+                        }
+                        diffs[diffs_i].mag = diff;
+                        diffs[diffs_i].count = 1;
                     }
                 }
-            
             }
-
+        }
+        
+        // correction time ? ( on every start of graph if there are diffs )
+        if( g->full && g->cursor == 0 && ( diffs_full || diffs_i > 0 ) ){
+            long diffs_sum = 0;
+            long diffs_total = 0;
+            int di = ( diffs_full ? diffs_i : 0 );
+            int count = ( diffs_full ? DIFFSMAX : diffs_i );
+            for( int i=0; i<count; i++ ){
+                diffs_sum += diffs[di].mag * diffs[di].count;
+                diffs_total += diffs[di].count;
+                di ++; di %= DIFFSMAX;
+            }
+            if( diffs_sum != 0 ){ // may cancel each other
+                double diffs_avg = ((double)diffs_sum)/((double)diffs_total);
+                if( diffs_avg > 0 )
+                    diffs_sum = (long)( floor( diffs_avg ) );
+                else
+                    diffs_sum = (long)( ceil( diffs_avg ) );
+                if( diffs_sum != 0 ){
+                    cursor -= diffs_sum;
+                    PRINT( "correction of [ %d ] samples \n", diffs_sum );
+                    diffs_full = diffs_i = 0;
+                }
+            }
         }
         
     }
@@ -441,6 +483,8 @@
             p->graph.max_i = -1; // invalid
         }
         cursor = -1; // invalid
+        diffs_full = 0;
+        diffs_i = 0;
 
         // UI
         WNDCLASSEX wc;
