@@ -15,6 +15,7 @@
     char console[1000] = "";
     
     void PRINT( char *format, ... ){
+        // TODO: lock of the global str
 
         static int width = 80, height = 12;
         static int lines = 1, firstline_len = 0, lastline_len = 0;
@@ -85,7 +86,7 @@
         POINT points[POINTSMAX];
         int full;
         long cursor;
-        long min, max; };
+        int min_i, max_i; };
 
     struct port {
         PaStream *stream;
@@ -93,6 +94,56 @@
         struct graph graph; }
 
     INPORT, OUTPORT;
+
+    long cursor;
+    
+
+    void aftermath( int sel, long t, int avail_after, int frameCount ){
+        char *portname = ( sel == 0 ? "input" : "output" );
+        struct graph *g = ( sel == 0 ? &(INPORT.graph) : &(OUTPORT.graph) );
+        
+        if( ((g->full) == 0) && ((g->cursor) == 0) )
+            PRINT( "profiling %s \n", portname );
+            
+        // make a stat
+        g->points[g->cursor].x = t;
+        g->points[g->cursor].y = avail_after -frameCount; // avail before insert
+        g->cursor++;
+        
+        g->points[g->cursor].x = t;
+        g->points[g->cursor].y = avail_after;
+        g->cursor++;
+        
+        // graph end ?
+        if( g->cursor == POINTSMAX ){
+            g->cursor = 0;
+            if( g->full == 0 ){
+                g->full = 1;
+                PRINT( "profiling %s done \n", portname );
+            }
+        }
+
+        // find min/max (every time for constant cpu usage and ease)
+        int pi = 0;
+        int gi = ( g->full ? g->cursor : 0 );
+        int count = ( g->full ? POINTSMAX : g->cursor );
+        int min = 999999;
+        int max = -999999;
+        for( int i=0; i<count; i++ ){
+            if( g->points[gi].y < min ){
+                min = g->points[gi].y;
+                g->min_i = gi;
+            }
+            if( g->points[gi].y > max ){
+                max = g->points[gi].y;
+                g->max_i = gi;
+            }
+            gi ++;
+            gi %= POINTSMAX;
+        }        
+
+        
+    }
 
 
     PaStreamCallbackResult device_tick(                            // RECEIVE
@@ -118,54 +169,32 @@
             // stamp
             now = NOW;
             
-            if( INPORT.t0 == 0 )
+            if( INPORT.t0 == -1 )
                 INPORT.t0 = now;
                 
             // commit
             INPORT.len += frameCount;
             
             // log
-            if( INPORT.graph.full == 0 && INPORT.graph.cursor == 0 )
-                PRINT( "profiling input \n" );
-            INPORT.graph.points[INPORT.graph.cursor].x = now;
-            INPORT.graph.points[INPORT.graph.cursor].y = INPORT.t0 + INPORT.len -frameCount -now; // avail before insert
-            INPORT.graph.cursor++; // should not get > POINTSMAX now
-            INPORT.graph.points[INPORT.graph.cursor].x = now;
-            INPORT.graph.points[INPORT.graph.cursor].y = INPORT.t0 + INPORT.len -now; // avail now
-            INPORT.graph.cursor++;
-            if( INPORT.graph.cursor == POINTSMAX ){
-                INPORT.graph.cursor = 0;
-
-                long min = 9999;
-                long max = -9999;
-                for( int i=0; i<POINTSMAX; i++ ){
-                    if( INPORT.graph.points[i].y < min )
-                        min = INPORT.graph.points[i].y;
-                    if( INPORT.graph.points[i].y > max )
-                        max = INPORT.graph.points[i].y;
-                }
-                if( INPORT.graph.min != min ){
-                    INPORT.graph.min = min;
-                    PRINT( "input min_avail = %d \n", min );
-                }
-                if( INPORT.graph.max != max ){
-                    INPORT.graph.max = max;
-                    //PRINT( "input max_avail = %d \n", max );
-                }
-
-                if( INPORT.graph.full == 0 ){
-                    INPORT.graph.full = 1;
-                    PRINT( "profiled input \n" );
-                }
-            }
+            aftermath( 0, now, INPORT.t0 + INPORT.len -now, frameCount );
         }
         
         if( output ){ // PRINT("o");
+
+            // read
         
-            if( OUTPORT.t0 == 0 )
-                OUTPORT.t0 = NOW;
-                
-            OUTPORT.len += frameCount; // commit
+            // stamp
+            now = NOW;
+            
+            if( OUTPORT.t0 == -1 )
+                OUTPORT.t0 = now;
+
+            // commit
+            OUTPORT.len += frameCount;
+            // cursor += frameCount
+            
+            // log
+            aftermath( 1, now, OUTPORT.t0 + OUTPORT.len -now, frameCount );
         }
 
         return paContinue; }
@@ -209,20 +238,15 @@
             if( err != paNoError ){
                 PRINT( "ERROR 3: %s \n", Pa_GetErrorText( err ) );
                 return FAIL; }
-            
-            struct port *p = ( i ? &INPORT : &OUTPORT );
-            p->t0 = 0;
-            p->len = 0;
-            p->graph.cursor = 0;
-            p->graph.full = 0;
-            
+
             PaStreamInfo *stream_info = Pa_GetStreamInfo( *stream );            
-            PRINT( "SampleRate %d \n", (int)round(stream_info->sampleRate) );
-            PRINT( "FrameCount %d \n", (int)round( i ? (stream_info->inputLatency)*SAMPLERATE : (stream_info->outputLatency)*SAMPLERATE ));
-            
+            PRINT( "%d / %d \n",
+                (int)round(stream_info->sampleRate),
+                (int)round( i ? (stream_info->inputLatency)*SAMPLERATE : (stream_info->outputLatency)*SAMPLERATE ) );
         }
 
-        PRINT( "ok. should be playing. \n" );
+        // done
+        PRINT( "both started. \n" );
         return OK; }
 
 
@@ -279,21 +303,50 @@
 
 
     int VPw = SAMPLERATE; // ViewPort width = 1 second in samples
-    int VPh = 2000;       // ViewPort height = 2000 samples
+    int VPh = 3000;       // ViewPort height = 2000 samples
     int VPx = 0;         // ViewPort pos x = now - width (rightmost points)
     int VPy = -500;     // ViewPort pos y = -VPh/2 so the absis comes vertically centered
     
     int Vw = 400;         // View width
     int Vh = 100;         // View height
     int Vx = 150;        // View pos x
-    int Vy = 10;        // View pos y
+    int Vy = 15;        // View pos y
 
+    long now;
+    
     void transform_point( POINT *p ){
         double Qw = ((double)Vw)/((double)VPw);
         double Qh = ((double)Vh)/((double)VPh);        
         p->x = (long)round( (p->x - VPx) * Qw + Vx );
         p->y = (long)round( (p->y - VPy) * Qh + Vy );
         p->y = 2*Vy + Vh - p->y;
+    }
+    
+    void draw_graph( HDC ddc, struct graph *g ){
+        static POINT points[POINTSMAX];
+        if( g->min_i > -1 ){            
+            int pi = 0;
+            int gi = ( g->full ? g->cursor : 0 );
+            int count = ( g->full ? POINTSMAX : g->cursor );
+            for( int i=0; i<count; i++ ){
+                points[pi++] = g->points[gi++];
+                transform_point( points+pi-1 );
+                gi %= POINTSMAX;
+            }        
+            Polyline( ddc, points, count );
+        }
+        POINT min_left = { now - SAMPLERATE, g->points[g->min_i].y };
+        POINT min_right = { now, g->points[g->min_i].y };
+        transform_point( &min_left );
+        transform_point( &min_right );
+        MoveToEx( ddc, min_left.x, min_right.y, 0 );
+        LineTo( ddc, min_right.x, min_right.y );
+        POINT max_left = { now - SAMPLERATE, g->points[g->max_i].y };
+        POINT max_right = { now, g->points[g->max_i].y };
+        transform_point( &max_left );
+        transform_point( &max_right );
+        MoveToEx( ddc, max_left.x, max_right.y, 0 );
+        LineTo( ddc, max_right.x, max_right.y );
     }
     
     void draw(){
@@ -303,9 +356,11 @@
 
         Rectangle( hdcMem, Vx, Vy, Vx+Vw, Vy+Vh );
 
-        long now = NOW;
-        VPx = now - VPw;
+        // stamp
+        now = NOW + (SAMPLERATE/100); // show 10ms of the future
+        VPx = now - VPw; // set viewport position
         
+        // absis
         POINT absis_p1 = {now - SAMPLERATE, 0};
         POINT absis_p2 = {now, 0};
         transform_point( &absis_p1 );
@@ -313,6 +368,7 @@
         MoveToEx( hdcMem, absis_p1.x, absis_p1.y, 0 );
         LineTo( hdcMem, absis_p2.x, absis_p2.y );
         
+        // test impulse
         POINT p1 = {0, 0};
         POINT p2 = {0, 500};
         POINT p3 = {500, 0};
@@ -323,33 +379,11 @@
         LineTo( hdcMem, p2.x, p2.y );
         LineTo( hdcMem, p3.x, p3.y );
         
-        static POINT points[POINTSMAX-2]; // without the current stat; may be half written
+        // graphs
+        draw_graph( hdcMem, &(INPORT.graph) );
+        draw_graph( hdcMem, &(OUTPORT.graph) );
         
-        if( INPORT.graph.full ){
-        
-            int i = INPORT.graph.cursor +2; // leave the current stat; may be half written
-            if( i == POINTSMAX ) // current was the last
-                i = 0;
-
-            int pi = 0;
-            
-            for( ;; ){
-                
-                points[pi++] = INPORT.graph.points[i++];
-                
-                i = i % POINTSMAX;
-                if( i == INPORT.graph.cursor )
-                    break;
-            }
-
-            for( pi=0; pi<POINTSMAX-2; pi++ )
-                transform_point( points+pi );
-            
-            Polyline( hdcMem, points, POINTSMAX-2 );
-            
-        }
-        
-        // PRINT( "(%d,%d)(%d,%d)", points[pi-2].x, points[pi-2].y, points[pi-1].x, points[pi-1].x );
+        // commit
         BitBlt( hdc, 10, 70, WW, HH, hdcMem, 0, 0, SRCCOPY );
     }
 
@@ -357,24 +391,32 @@
 
         // SetProcessDPIAware();
 
-        if( Pa_Initialize() ){
-            PRINT( "ERROR: Pa_Initialize rubbish \n" );
-            return FAIL; }
+        if( Pa_Initialize() )
+            PRINT( "ERROR: Could not initialize PortAudio. \n" );
+        if( Pa_GetDeviceCount() <= 0 )
+            PRINT( "ERROR: No Devices Found. \n" );
             
-        if( Pa_GetDeviceCount() <= 0 ) {
-            PRINT( "ERROR: No Devices Found \n" );
-            return FAIL; }
-            
+        PRINT( "%s\n\n", Pa_GetVersionInfo()->versionText );            
+        
         PaUtil_InitializeClock();
         T0 = PaUtil_GetTime();
-        
-        const PaVersionInfo *vi = Pa_GetVersionInfo();
 
-        PRINT( "%s\n\n", vi->versionText );
+        // globals
+        struct port* ports [2] = { &INPORT, &OUTPORT };
+        for( int i=0; i<2; i++ ){
+            struct port *p = ports[i];
+            memset( p, 0, sizeof(struct port) );
+            memset( p, 0, sizeof(struct port) );
+            p->t0 = -1; // invalid
+            p->len = 0;
+            p->graph.cursor = 0;
+            p->graph.full = 0;
+            p->graph.min_i = -1; // invalid
+            p->graph.max_i = -1; // invalid
+        }
+        cursor = -1; // invalid
 
-        memset( &INPORT, 0, sizeof(INPORT) );
-        memset( &OUTPORT, 0, sizeof(OUTPORT) );
-
+        // UI
         WNDCLASSEX wc;
         memset( &wc, 0, sizeof(wc) );
         wc.cbSize = sizeof(wc);
@@ -410,8 +452,8 @@
 
         ShowWindow( hwnd, SW_SHOW );
 
+        // dropdowns
         char str[1000], txt[100000];
-
         for( int i=0; i<Pa_GetDeviceCount(); i++ ){
             PaDeviceInfo *info = Pa_GetDeviceInfo(i);
             strcpy( str, Pa_GetHostApiInfo( info->hostApi )->name );
@@ -421,6 +463,7 @@
             SendMessage( hCombo1, CB_SETCURSEL, (WPARAM)0, (LPARAM)0 );
             SendMessage( hCombo2, CB_SETCURSEL, (WPARAM)0, (LPARAM)0 ); }
 
+        // loop
         while( !done ){
             if( PeekMessage( &msg, NULL, 0, 0, PM_REMOVE ) ){
                 if( msg.message == WM_QUIT )
