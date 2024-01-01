@@ -80,6 +80,7 @@
     #define NOW ((long)(ceil((PaUtil_GetTime()-T0)*SAMPLERATE))) // [samples]   
      
     #define POINTSMAX 200  // should be even
+    #define POINTSMIN 20
 
 
     struct graph {
@@ -96,15 +97,13 @@
     INPORT, OUTPORT;
 
     long cursor;
+    long last_diff;
     
 
     void aftermath( int sel, long t, int avail_after, int frameCount ){
         char *portname = ( sel == 0 ? "input" : "output" );
         struct graph *g = ( sel == 0 ? &(INPORT.graph) : &(OUTPORT.graph) );
         
-        if( ((g->full) == 0) && ((g->cursor) == 0) )
-            PRINT( "profiling %s \n", portname );
-            
         // make a stat
         g->points[g->cursor].x = t;
         g->points[g->cursor].y = avail_after -frameCount; // avail before insert
@@ -117,10 +116,8 @@
         // graph end ?
         if( g->cursor == POINTSMAX ){
             g->cursor = 0;
-            if( g->full == 0 ){
+            if( g->full == 0 )
                 g->full = 1;
-                PRINT( "profiling %s done \n", portname );
-            }
         }
 
         // find min/max (every time for constant cpu usage and ease)
@@ -142,6 +139,31 @@
             gi %= POINTSMAX;
         }        
 
+        // cursor ?
+        if( (INPORT.graph.full || INPORT.graph.cursor > POINTSMIN) && (OUTPORT.graph.full || OUTPORT.graph.cursor > POINTSMIN) ){
+        
+            long new_cursor_candidate = 
+                OUTPORT.t0 -INPORT.t0 // output.t0 as input lane address
+                +OUTPORT.len // where is output end on the input
+                +INPORT.graph.points[INPORT.graph.min_i].y -OUTPORT.graph.points[OUTPORT.graph.max_i].y; // our latency
+                
+            if( new_cursor_candidate >= 0 ){
+            
+                if( cursor == -1 ){
+                    cursor = new_cursor_candidate;
+                    PRINT( "curosr initialized \n" );
+                    
+                } else {
+                    long diff = cursor - new_cursor_candidate;
+                    if( diff != last_diff ){
+                        PRINT( "{%d}", diff );
+                        last_diff = diff;
+                    }
+                }
+            
+            }
+
+        }
         
     }
 
@@ -181,8 +203,13 @@
         
         if( output ){ // PRINT("o");
 
-            // read
-        
+            if( cursor > -1 ){
+                // copy 
+                if( cursor + frameCount > INPORT.len )
+                    PRINT( "glitch %d \n", cursor -INPORT.len );
+                cursor += frameCount;
+            }
+
             // stamp
             now = NOW;
             
@@ -191,8 +218,7 @@
 
             // commit
             OUTPORT.len += frameCount;
-            // cursor += frameCount
-            
+
             // log
             aftermath( 1, now, OUTPORT.t0 + OUTPORT.len -now, frameCount );
         }
