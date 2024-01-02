@@ -110,6 +110,8 @@
     int diffs_i;
     int diffs_full;
     
+    
+    
 
     void aftermath( int sel, long t, int avail_after, int frameCount ){
         char *portname = ( sel == 0 ? "input" : "output" );
@@ -181,9 +183,10 @@
                 }
             }
         }
-        
-        // correction time ? ( on every start of graph if there are diffs )
-        if( g->full && g->cursor == 0 && ( diffs_full || diffs_i > 0 ) ){
+    }
+
+    void correct_cursor_if_necessary(){
+        if( diffs_full || diffs_i > 0 ){
             long diffs_sum = 0;
             long diffs_total = 0;
             int di = ( diffs_full ? diffs_i : 0 );
@@ -199,16 +202,14 @@
                     diffs_sum = (long)( floor( diffs_avg ) );
                 else
                     diffs_sum = (long)( ceil( diffs_avg ) );
-                if( diffs_sum != 0 ){
+                if( diffs_sum != 0 ){ // may round to zero
                     cursor -= diffs_sum;
                     PRINT( "correction of [ %d ] samples \n", diffs_sum );
                     diffs_full = diffs_i = 0;
                 }
             }
         }
-        
     }
-
 
     PaStreamCallbackResult device_tick(                            // RECEIVE
         float **input,
@@ -534,6 +535,8 @@
             SendMessage( hCombo2, CB_SETCURSEL, (WPARAM)0, (LPARAM)0 ); }
 
         // loop
+        double last_correction_time = PaUtil_GetTime(); // queryperformancecounter de-facto
+        // TODO: use NOW; get once in the loop; give it to draw
         while( !done ){
             if( PeekMessage( &msg, NULL, 0, 0, PM_REMOVE ) ){
                 if( msg.message == WM_QUIT )
@@ -541,6 +544,10 @@
                 else {
                     TranslateMessage( &msg );
                     DispatchMessage( &msg ); }}
+            else if( PaUtil_GetTime() - last_correction_time > 1.0 ){ // once per second
+                correct_cursor_if_necessary();
+                last_correction_time = PaUtil_GetTime();
+            }
             else 
                 draw();
         }
