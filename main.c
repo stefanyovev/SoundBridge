@@ -83,6 +83,8 @@
     #define POINTSMIN 20
     
     #define DIFFSMAX 100
+    
+    #define MSIZE SAMPLERATE // keep one second
 
 
     struct graph {
@@ -92,6 +94,7 @@
         int min_i, max_i; };
 
     struct port {
+        int channels_count;
         PaStream *stream;
         long t0, len;        
         struct graph graph; }
@@ -109,8 +112,9 @@
     
     int diffs_i;
     int diffs_full;
-    
-    
+
+
+    float *canvas;
     
 
     void aftermath( int sel, long t, int avail_after, int frameCount ){
@@ -230,6 +234,17 @@
         if( input ){
         
             // write
+            int ofs = MSIZE + INPORT.len % MSIZE;
+            if( ofs +frameCount <= 2*MSIZE ){
+                for( int i=0; i<INPORT.channels_count; i++ )
+                    memcpy( canvas +i*MSIZE*3 +ofs, input[i], frameCount*SAMPLESIZE );
+            } else {
+                int x = ofs +frameCount -2*MSIZE;
+                for( int i=0; i<INPORT.channels_count; i++ ){
+                    memcpy( canvas +i*MSIZE*3 +ofs, input[i], (frameCount-x)*SAMPLESIZE );
+                    memcpy( canvas +i*MSIZE*3 +MSIZE , input[i] +(frameCount-x), x*SAMPLESIZE );
+                }
+            }
         
             // stamp
             now = NOW;
@@ -302,7 +317,16 @@
                     const PaHostErrorInfo* herr = Pa_GetLastHostErrorInfo();
                     PRINT( "ERROR 2: %s \n", herr->errorText );
                     return FAIL; }}
-                    
+            
+            if( i ){
+                INPORT.channels_count = device_info->maxInputChannels;
+                canvas = malloc( INPORT.channels_count * MSIZE*3 * SAMPLESIZE );
+                if( !canvas )
+                    PRINT( "ERROR: could not allocate memory" );
+            } else {
+                OUTPORT.channels_count = device_info->maxOutputChannels;
+            }
+
             err = Pa_StartStream( *stream );
             if( err != paNoError ){
                 PRINT( "ERROR 3: %s \n", Pa_GetErrorText( err ) );
