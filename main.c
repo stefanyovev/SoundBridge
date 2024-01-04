@@ -116,6 +116,12 @@
 
     float *canvas;
     
+    struct out {
+        int src_chan;
+    }
+    
+    *map;
+
 
     void aftermath( int sel, long t, int avail_after, int frameCount ){
         char *portname = ( sel == 0 ? "input" : "output" );
@@ -168,7 +174,7 @@
             
                 if( cursor == -1 ){
                     cursor = new_cursor_candidate;
-                    PRINT( "curosr initialized \n" );
+                    PRINT( "curosr initialized (%d) \n", cursor );
                     
                 } else if( cursor - new_cursor_candidate != 0 ){
                     // push a diff to think about
@@ -231,7 +237,7 @@
         if( input && output )
             PRINT( "strange \n" );
 
-        if( input ){
+        if( input ){ // PRINT("i");
         
             // write
             int ofs = MSIZE + INPORT.len % MSIZE;
@@ -263,6 +269,15 @@
 
             if( cursor > -1 ){
                 // copy 
+                for( int i=0; i<OUTPORT.channels_count; i++ ){
+                    if( map[i].src_chan == -1 )
+                        continue;
+                    int ofs = cursor % MSIZE +MSIZE;
+                    //if( ofs +frameCount >2*MSIZE )
+                    //    memcpy( canvas + map[i].src_chan*MSIZE*3 +2*MSIZE, canvas +map[i].src_chan*MSIZE*3 +MSIZE, ofs+frameCount -2*MSIZE);
+                    memcpy( output[i], canvas + map[i].src_chan*MSIZE*3 +ofs, frameCount );
+                }
+                
                 if( cursor + frameCount > INPORT.len )
                     PRINT( "glitch %d \n", cursor -INPORT.len );
                 cursor += frameCount;
@@ -320,11 +335,18 @@
             
             if( i ){
                 INPORT.channels_count = device_info->maxInputChannels;
+                PRINT( "%d channels \n", INPORT.channels_count );
                 canvas = malloc( INPORT.channels_count * MSIZE*3 * SAMPLESIZE );
                 if( !canvas )
                     PRINT( "ERROR: could not allocate memory" );
             } else {
                 OUTPORT.channels_count = device_info->maxOutputChannels;
+                PRINT( "%d channels \n", OUTPORT.channels_count );
+                map = malloc( OUTPORT.channels_count * sizeof(struct out) );
+                if( !map )
+                    PRINT( "ERROR: could not allocate memory" );
+                for( int i=0; i<OUTPORT.channels_count; i++ )
+                    map[i].src_chan = -1;
             }
 
             err = Pa_StartStream( *stream );
@@ -380,13 +402,15 @@
                 GetDlgItemText( hwnd, CMB2, txt, 255 );
                 sscanf( txt, "  %3d", &dd );
 
-                int ok = start( sd, dd );
+                if( start( sd, dd ) == OK ){
+                    map[0].src_chan = 0;
+                    map[1].src_chan = 1;                
+                    EnableWindow( hCombo1, 0 );
+                    EnableWindow( hCombo2, 0 );
+                    EnableWindow( hBtn, 0 );
+                }
                 
-                EnableWindow( hCombo1, ok );
-                EnableWindow( hCombo2, ok );
-                EnableWindow( hBtn, ok );
-                
-                 }}
+             }}
 
         else if( msg == WM_CLOSE )
             DestroyWindow( hwnd );
