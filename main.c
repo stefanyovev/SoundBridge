@@ -168,7 +168,7 @@
             long new_cursor_candidate = 
                 OUTPORT.t0 -INPORT.t0 // output.t0 as input lane address
                 +OUTPORT.len // where is output end on the input
-                +INPORT.graph.points[INPORT.graph.min_i].y -OUTPORT.graph.points[OUTPORT.graph.max_i].y-5000; // our latency
+                +INPORT.graph.points[INPORT.graph.min_i].y -OUTPORT.graph.points[OUTPORT.graph.max_i].y; // our latency
                 
             if( new_cursor_candidate >= 0 ){
             
