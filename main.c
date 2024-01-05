@@ -168,7 +168,7 @@
             long new_cursor_candidate = 
                 OUTPORT.t0 -INPORT.t0 // output.t0 as input lane address
                 +OUTPORT.len // where is output end on the input
-                +INPORT.graph.points[INPORT.graph.min_i].y -OUTPORT.graph.points[OUTPORT.graph.max_i].y; // our latency
+                +INPORT.graph.points[INPORT.graph.min_i].y -OUTPORT.graph.points[OUTPORT.graph.max_i].y-5000; // our latency
                 
             if( new_cursor_candidate >= 0 ){
             
@@ -240,17 +240,10 @@
         if( input ){ // PRINT("i");
         
             // write
-            int ofs = MSIZE + INPORT.len % MSIZE;
-            if( ofs +frameCount <= 2*MSIZE ){
-                for( int i=0; i<INPORT.channels_count; i++ )
-                    memcpy( canvas +i*MSIZE*3 +ofs, input[i], frameCount*SAMPLESIZE );
-            } else {
-                int x = ofs +frameCount -2*MSIZE;
-                for( int i=0; i<INPORT.channels_count; i++ ){
-                    memcpy( canvas +i*MSIZE*3 +ofs, input[i], (frameCount-x)*SAMPLESIZE );
-                    memcpy( canvas +i*MSIZE*3 +MSIZE , input[i] +(frameCount-x), x*SAMPLESIZE );
-                }
-            }
+            int ofs = INPORT.len % MSIZE;
+            for( int i=0; i<INPORT.channels_count; i++ )
+                for( int j=0; j<3; j++ )
+                    memcpy( canvas +i*MSIZE*4 +j*MSIZE +ofs, input[i], frameCount*SAMPLESIZE );
         
             // stamp
             now = NOW;
@@ -272,10 +265,8 @@
                 for( int i=0; i<OUTPORT.channels_count; i++ ){
                     if( map[i].src_chan == -1 )
                         continue;
-                    int ofs = cursor % MSIZE +MSIZE;
-                    //if( ofs +frameCount >2*MSIZE )
-                    //    memcpy( canvas + map[i].src_chan*MSIZE*3 +2*MSIZE, canvas +map[i].src_chan*MSIZE*3 +MSIZE, ofs+frameCount -2*MSIZE);
-                    memcpy( output[i], canvas + map[i].src_chan*MSIZE*3 +ofs, frameCount );
+                    int ofs = cursor % MSIZE;
+                    memcpy( output[i], canvas + map[i].src_chan*MSIZE*4 +MSIZE +ofs, frameCount*SAMPLESIZE );
                 }
                 
                 if( cursor + frameCount > INPORT.len )
@@ -336,7 +327,7 @@
             if( i ){
                 INPORT.channels_count = device_info->maxInputChannels;
                 PRINT( "%d channels \n", INPORT.channels_count );
-                canvas = malloc( INPORT.channels_count * MSIZE*3 * SAMPLESIZE );
+                canvas = malloc( INPORT.channels_count * MSIZE*4 * SAMPLESIZE );
                 if( !canvas )
                     PRINT( "ERROR: could not allocate memory" );
             } else {
