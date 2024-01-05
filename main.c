@@ -263,8 +263,10 @@
             if( cursor > -1 ){
                 // copy 
                 for( int i=0; i<OUTPORT.channels_count; i++ ){
-                    if( map[i].src_chan == -1 )
+                    if( map[i].src_chan == -1 ) {
+                        memset( output[i], 0, frameCount*SAMPLESIZE );
                         continue;
+                    }
                     int ofs = cursor % MSIZE;
                     memcpy( output[i], canvas + map[i].src_chan*MSIZE*4 +MSIZE +ofs, frameCount*SAMPLESIZE );
                 }
@@ -364,8 +366,7 @@
     const int height = 700;
     const int WW = 574, HH = 200;
 
-    HWND hwnd, hCombo1, hCombo2, hBtn;
-    
+    HWND hwnd;
     HDC hdc, hdcMem;
     HBITMAP hbmp;
     void ** pixels;
@@ -378,37 +379,12 @@
     #define CMB1 (555)
     #define CMB2 (556)
     #define BTN1 (123)
+    
+    #define LB1 (110)
+    #define CB1 (220)
 
-
-    LRESULT CALLBACK WndProc( HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam ){
-        if( msg == WM_COMMAND ){
-            if( LOWORD(wParam) == BTN1 ){
-
-                int sd, dd;
-                char*  txt[300];
-
-                GetDlgItemText( hwnd, CMB1, txt, 255 );
-                sscanf( txt, "  %3d", &sd );
-
-                GetDlgItemText( hwnd, CMB2, txt, 255 );
-                sscanf( txt, "  %3d", &dd );
-
-                if( start( sd, dd ) == OK ){
-                    map[0].src_chan = 0;
-                    map[1].src_chan = 1;                
-                    EnableWindow( hCombo1, 0 );
-                    EnableWindow( hCombo2, 0 );
-                    EnableWindow( hBtn, 0 );
-                }
-                
-             }}
-
-        else if( msg == WM_CLOSE )
-            DestroyWindow( hwnd );
-        else if( msg == WM_DESTROY )
-            PostQuitMessage( 0 );
-        return DefWindowProc( hwnd, msg, wParam, lParam ); }
-
+    HWND hCombo1, hCombo2, hBtn;
+    HWND cbs[10];
 
     int VPw = SAMPLERATE; // ViewPort width = 1 second in samples
     int VPh = 3000;       // ViewPort height = 2000 samples
@@ -492,8 +468,67 @@
         draw_graph( hdcMem, &(OUTPORT.graph) );
         
         // commit
-        BitBlt( hdc, 10, 70, WW, HH, hdcMem, 0, 0, SRCCOPY );
+        BitBlt( hdc, 10, 460, WW, HH, hdcMem, 0, 0, SRCCOPY );
     }
+
+
+    LRESULT CALLBACK WndProc( HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam ){
+        if( msg == WM_COMMAND ){
+            if( LOWORD(wParam) == BTN1 ){
+
+                int sd, dd;
+                char txt[300];
+
+                GetDlgItemText( hwnd, CMB1, txt, 255 );
+                sscanf( txt, "  %3d", &sd );
+
+                GetDlgItemText( hwnd, CMB2, txt, 255 );
+                sscanf( txt, "  %3d", &dd );
+
+                if( start( sd, dd ) == OK ){
+                    for( int i=0; i<OUTPORT.channels_count; i++ )
+                        map[i].src_chan = i % 2; // LR LR LR ..
+                    EnableWindow( hCombo1, 0 );
+                    EnableWindow( hCombo2, 0 );
+                    EnableWindow( hBtn, 0 );
+                    for( int i=0; i<OUTPORT.channels_count; i++ ){
+                        if( i <= 10 ){
+                            EnableWindow( cbs[i], 1 );
+                            for( int j=0; j<INPORT.channels_count; j++ ){
+                                char str[3] = "nn";
+                                if( j+1 != 10 ) { str[0] = 48+j+1; str[1] = 0; }
+                                else { str[0] = 49; str[1] = 48; str[2] = 0;}
+                                SendMessage( cbs[i], CB_ADDSTRING, 0, str );
+                                SendMessage( cbs[i], CB_SETCURSEL, (WPARAM)map[i].src_chan+1, (LPARAM)0 );
+                            }
+                        }
+                    }
+                }
+            } else if( (LOWORD(wParam) >= CB1) && LOWORD(wParam) <= CB1+10 && CBN_SELCHANGE == HIWORD(wParam) ){
+            
+                int out = LOWORD(wParam) - CB1;
+                
+                char  txt[20];
+                GetDlgItemText( hwnd, CB1+out, txt, 20 );
+                
+                int chan = txt[0]-48-1;
+                if( chan < 10 ) {
+                    map[out].src_chan = chan;
+                    PRINT( "mapped out %d to in %d\n", out+1, chan+1 ); }
+                else {
+                    map[out].src_chan = -1;
+                    PRINT( "muted out %d \n", out+1 ); }
+                
+                
+            }
+         }
+
+        else if( msg == WM_CLOSE )
+            DestroyWindow( hwnd );
+        else if( msg == WM_DESTROY )
+            PostQuitMessage( 0 );
+        return DefWindowProc( hwnd, msg, wParam, lParam ); }
+
 
     int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine, int nCmdShow ){                                    // MAIN2
 
@@ -541,9 +576,6 @@
             return 0; }
 
         hwnd = CreateWindowEx( WS_EX_APPWINDOW, "mainwindow", title, WS_MINIMIZEBOX | WS_SYSMENU | WS_POPUP | WS_CAPTION, 300, 200, width, height, 0, 0, hInstance, 0 );
-        hCombo1 = CreateWindowEx( 0, "ComboBox", 0, WS_VISIBLE|WS_CHILD|WS_TABSTOP|CBS_DROPDOWNLIST, 10, 10, 490, 8000, hwnd, CMB1, NULL, NULL);
-        hCombo2 = CreateWindowEx( 0, "ComboBox", 0, WS_VISIBLE|WS_CHILD|WS_TABSTOP|CBS_DROPDOWNLIST, 10, 40, 490, 8000, hwnd, CMB2, NULL, NULL);
-        hBtn = CreateWindowEx( 0, "Button", "Play >", WS_VISIBLE|WS_CHILD|WS_TABSTOP|BS_DEFPUSHBUTTON, 507, 10, 77, 53, hwnd, BTN1, NULL, NULL);
 
         BITMAPINFO bmi;
         memset( &bmi, 0, sizeof(bmi) );
@@ -560,9 +592,26 @@
         SelectObject( hdcMem, hbmp );
         SetBkMode( hdcMem, TRANSPARENT );
 
+        hCombo1 = CreateWindowEx( 0, "ComboBox", 0, WS_VISIBLE|WS_CHILD|WS_TABSTOP|CBS_DROPDOWNLIST, 10, 10, 490, 8000, hwnd, CMB1, NULL, NULL);
+        hCombo2 = CreateWindowEx( 0, "ComboBox", 0, WS_VISIBLE|WS_CHILD|WS_TABSTOP|CBS_DROPDOWNLIST, 10, 40, 490, 8000, hwnd, CMB2, NULL, NULL);
+        hBtn = CreateWindowEx( 0, "Button", "Play >", WS_VISIBLE|WS_CHILD|WS_TABSTOP|BS_DEFPUSHBUTTON, 507, 10, 77, 53, hwnd, BTN1, NULL, NULL);
+
+        for( int i=0; i<10; i++ ){
+            char str[7] = "out nn";
+            if( i+1 != 10 ) {
+                str[4] = 48+i+1; str[5] = 0; }
+            else {
+                str[4] = 49; str[5] = 48; str[6] = 0;}
+            CreateWindowEx( 0, "static", str, WS_VISIBLE|WS_CHILD, 50, 105+i*30, 50, 80, hwnd, LB1+i, NULL, NULL);
+            cbs[i] = CreateWindowEx( 0, "ComboBox", 0, WS_VISIBLE|WS_CHILD|WS_TABSTOP|CBS_DROPDOWNLIST, 100, 100+i*30, 90, 80, hwnd, CB1+i, NULL, NULL);
+            SendMessage( cbs[i], CB_ADDSTRING, 0, "None");
+            SendMessage( cbs[i], CB_SETCURSEL, (WPARAM)0, (LPARAM)0 );
+            EnableWindow( cbs[i], 0 );
+        }
+
         ShowWindow( hwnd, SW_SHOW );
 
-        // dropdowns
+        // populate device dropdowns
         char str[1000], txt[100000];
         for( int i=0; i<Pa_GetDeviceCount(); i++ ){
             PaDeviceInfo *info = Pa_GetDeviceInfo(i);
